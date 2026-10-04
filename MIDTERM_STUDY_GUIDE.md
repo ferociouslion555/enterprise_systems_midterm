@@ -133,11 +133,67 @@
 - **Choreography:** services react to events, no central coordinator (implicit flow).
 - Example (MusicCorp customer creation): loyalty points record + welcome pack + welcome email — can be done either way.
 
-### Resilience
-- **Circuit Breaker** (Michael Nygard, *Release It!*): wrap a protected call in an object that monitors failures and "trips" to stop cascading failures.
-- Guards: **bulkheads** (per-dependency pools/quotas), **bounded queues & concurrency limits**, **load shedding / rate limiting**, autoscale on queue depth, isolate by cell/AZ.
-- Scaling: **vertical** (bigger machines) vs **horizontal** (more machines).
-- **CloudEvents 1.0** standard attributes on every event: id, source, type, subject, time, datacontenttype, dataschema.
+### Failure modes & guards (the deck groups failures into 3 kinds)
+- **Latency / cascade failure:** symptoms = rising p95/p99 latency, timeout spikes, pools pinned, circuit breakers opening. Guards = strict per-hop timeouts, retry budgets w/ exponential backoff + jitter, circuit breakers + graceful fallbacks, small caches for hot reads.
+- **Saturation / backpressure (resource exhaustion):** symptoms = CPU/mem/connections pegged, backlog growth, 429/503s, GC pauses (often from traffic spikes or retry storms). Guards = **bulkheads** (per-dependency pools/quotas), bounded queues & concurrency limits, load shedding / rate limiting, autoscale on queue depth/lag, isolate by cell/AZ.
+- **Contract & state correctness (schema drift, duplicates, ordering):** symptoms = parse/validation errors, silent truncation, 4xx bursts after a deploy, double-processing. Guards = versioned schemas (JSON/Proto) with backward compatibility, schema registry, sagas/compensations, reconciliation jobs.
+
+### Circuit Breaker (Michael Nygard, *Release It!*) ⭐
+- Remote calls can fail or hang until a timeout; many callers on an unresponsive supplier can exhaust resources → **cascading failures**.
+- **Basic idea:** wrap a protected call in a circuit-breaker object that **monitors for failures**; once failures hit a **threshold** the breaker **trips** and further calls return an error immediately (without making the protected call). Add a **monitor/alert** when it trips, and a **reset mechanism** once calls succeed again.
+- Related guards: **Timeouts, Bulkhead, Isolation**. **Antifragile** org = embracing failure to improve resilience (Chaos Monkey).
+
+### Idempotency ⭐
+- **Idempotent** = a client can make the same call repeatedly and get the **same result/effect** as making it once.
+- Idempotent ≠ stateless: the server may keep state, but repeating the call leaves that state exactly as one call left it.
+- HTTP verbs: **GET, PUT, DELETE** are defined idempotent; **POST is NOT** unless you give it an **idempotency key**. (Verbs are only idempotent if the service *implements* them that way.)
+- Why it matters for scaling: with replicas, requests may hit any node → same outcome; prevents unintended side effects from retries/duplicates; enables better caching; simplifies error handling (safe to retry transient errors).
+
+### Scaling
+- **Vertical scaling** = bigger machines. **Horizontal scaling** = many small machines.
+- Current practice: **containers on a managed orchestrator** (Kubernetes, ECS, Cloud Run), serverless for spiky/event-driven pieces.
+- Affinity / anti-affinity (host, AZ, region); worker-based (Spark, Flink, Ray).
+- **Scaling databases:** reads → **caching + read replicas**; writes → **sharding** (hash on primary key picks the node; Cassandra replicates across a ring for resiliency).
+- **CQRS** = separate read and write models: **commands** update data (task-based, e.g. "Book hotel room", may be queued/async); **queries** never modify data (return a DTO with no domain logic).
+
+### Caching
+- **Proxy caching** — proxy between client & server (reverse proxy or **CDN**).
+- **Server-side caching** — server handles it (Memcached, ElastiCache).
+
+### Load balancers (AWS, know ALB vs NLB vs GWLB)
+- **Classic/ELB** (2009, legacy) — like an Nginx/HAProxy instance; routes only by port.
+- **ALB (Application LB)** — **Layer 7 (HTTP)**; rich routing by host, path, query string, method, headers, source IP, port; can target many ports, and route to **Lambda**.
+- **NLB (Network LB)** — Layer 4; listeners → target groups → instances/containers/IPs with health checks.
+- **GWLB (Gateway LB)** — Layer 3; deploy/scale inline network appliances (firewalls, IDS/IPS); uses GENEVE over UDP 6081.
+
+### Service discovery & registries
+- Plain **DNS** isn't suited to microservice churn unless kept current (Kubernetes does this via **CoreDNS + Services**).
+- Dynamic registries: **Zookeeper**, Consul, etc. (ephemeral topology, failure detection).
+
+### Containers & orchestration (one-slide summary) ⭐
+- A **container** = a process with its own filesystem **image** and resource limits (namespaces, cgroups). The **image** is the unit you build/test/ship.
+- An **orchestrator** (Kubernetes, ECS, Cloud Run, Nomad) places containers, restarts them, scales replicas, routes traffic, rolls versions out/back.
+- **Kubernetes objects to know:** Pod, Deployment, Service, Ingress, ConfigMap, Secret, Namespace. You declare **desired state in YAML**; controllers **reconcile** the cluster to it.
+- **Managed control planes:** EKS (AWS), GKE (Google), AKS (Azure). What stays yours: images, resource requests/limits, health probes, autoscaling, cost. **Sizing rule: request what you use.**
+
+### Service mesh ⭐
+- A **proxy beside every service** (**sidecar**) intercepts every service-to-service call. Proxies: **Envoy, Linkerd**; meshes: **Istio, Linkerd, Consul**. App code unchanged.
+- Gives you: **traffic policy in config** (timeouts, retries, circuit breaking, canary/traffic splitting, fault injection); **security by default** (mutual TLS between services, per-workload identity, authz at the proxy); **observability for free** (uniform latency/error/throughput metrics, traces, access logs per hop).
+- Since 2024 the sidecar is **optional** — ambient / sidecar-less modes (Istio ambient, Cilium) move the proxy to the node to cut cost.
+- **Worth it:** dozens of services in several languages, mTLS/audit requirements, progressive delivery, a platform team to own it. **Not worth it:** a few services in one language (use a library like Resilience4j/Polly), a modulith, a small team. **Costs:** per-pod CPU/memory (~1 ms/hop), a control plane to upgrade, a second place policy lives, harder debugging.
+
+### Event-driven collaboration checklist (the deck's 5-point recipe)
+1. **Contract:** CloudEvents 1.0 attributes on every message (`id, source, type, subject, time, datacontenttype, dataschema`). JSON (easy to debug) or Protobuf/Avro (smaller/faster/typed). Backward-compatible schema changes only; store in a schema registry with a BACKWARD compatibility policy.
+2. **Delivery:** at-least-once + **idempotent handlers**; enforce once-only effects (upsert / ProcessedEvents table / compare-and-set); one ordering key per aggregate (Kafka key, SQS FIFO group, Pub/Sub ordering key).
+3. **Reliability:** retries with **exponential backoff + full jitter**; classify transient (retry) vs permanent (no retry); **DLQ** after retry budget exhausted (include failure metadata); safety valves (concurrency limits, circuit breakers, poison-pill detection).
+4. **State / Outbox:** write an **outbox row** in the same transaction as the business row; a poller or **CDC (Debezium)** publishes NEW rows and marks them SENT → no lost events, no phantom events.
+5. **Observability:** propagate **W3C traceparent** + a business `correlationId`; ship publish/consume rate, end-to-end latency (p50/p95/p99), consumer lag, retry counts, DLQ depth, schema-validation failures; alert on sustained lag, DLQ depth > 0, stuck consumers.
+- Best practice: **"dumb pipes, smart endpoints"** — keep middleware dumb; prefer open contracts (HTTP + CloudEvents, or a broker: Kafka/RabbitMQ/SQS/Pub-Sub).
+
+### Service design (tail slides)
+- **Service Boundary Checklist / Modeling Services:** worry about what happens *between* services; model around APIs/events, datastore, integration.
+- **Integration rules:** avoid breaking changes; keep APIs technology-agnostic; hide internal implementation detail; **avoid a shared database** (exceptions: read-only, strangler-fig).
+- **Tailored Service Template:** a default set of decisions (web framework, logging, monitoring, build, packaging, deployment) per stack — lightweight governance that encourages collaborative evolution.
 
 ---
 
