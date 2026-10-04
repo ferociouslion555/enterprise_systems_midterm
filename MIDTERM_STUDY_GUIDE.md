@@ -6,6 +6,28 @@
 
 ---
 
+## ⭐ EXAM FORMAT & CONFIRMED QUESTIONS (from the professor's own words, in-class)
+
+**Format (he described this directly):**
+- **In person, on campus. Canvas quiz format.**
+- Exam day = Oct 7 split in two: **1st half (~60–75 min)** each team leader presents the **project abstract** (~5 min/team — have your abstract ready); **2nd half (~75–90 min)** the exam.
+- **~40 questions.** All **deterministic**: multiple choice · multiple select ("select all that apply") · true/false · matching · ordering/sequencing. **No essays, no calculations.**
+- ✅ **You may bring ONE double-sided, HANDWRITTEN cheat sheet.** Prepare it well — write down every numbered list below.
+- Content = **all slides up to the midterm + in-class assignments + homeworks**. He deliberately adds a few questions drawn from the **labs/homework** to catch non-participants.
+
+**His method (use this to predict questions):** *"Go through the slides, and when you see things like 'the four properties of a service,' that's exactly the kind of thing I'd put on an exam."* → **Every slide with a numbered list is a likely question.**
+
+**Example questions he literally stated out loud:**
+1. **"What are the 4 properties of a service? Select all that apply."** (said twice — treat as guaranteed) → represents a business activity w/ a specified outcome · self-contained · a black box (internals hidden) · may be composed of other services.
+2. **"What are the modules of ERP systems? Select all that apply."** → SCM, CRM, HRM, collaboration (watch for a bogus distractor like "traffic control").
+3. **"What are examples of transactional data? Select all that apply."**
+4. **"What are the steps in an ERP order? Put them in order 1–4."** (ordering)
+5. **"What are examples of core activities in CRM?"**
+6. **"Which of these is NOT a major CRM vendor?"** → e.g. Salesforce / Oracle / Microsoft / **NVIDIA** (NVIDIA is the odd one out).
+7. **"Which of these is a pro and which is a con?"** (matching, e.g. buy-vs-build ERP).
+
+---
+
 ## 0. Which slides/lectures to study (scope)
 
 | Priority | Lecture (file) | Topic | Week |
@@ -194,6 +216,20 @@
 - **Service Boundary Checklist / Modeling Services:** worry about what happens *between* services; model around APIs/events, datastore, integration.
 - **Integration rules:** avoid breaking changes; keep APIs technology-agnostic; hide internal implementation detail; **avoid a shared database** (exceptions: read-only, strangler-fig).
 - **Tailored Service Template:** a default set of decisions (web framework, logging, monitoring, build, packaging, deployment) per stack — lightweight governance that encourages collaborative evolution.
+- **Exemplars vs templates (two ways to "govern through code"):** an **exemplar** = a model service others copy; a **template** = a starting point with variables/defaults. (Beware a central team producing all templates — anti-pattern for agile teams.)
+
+### Extra concepts the professor emphasized in lecture (L4) ⭐
+- **"Complexity is the enemy of reliability"** — repeated several times; keep services no more complex than needed (extra complexity = extra things that can fail). Likely a quotable T/F or concept question.
+- **CAP theorem** — the trade-off behind strong vs eventual consistency: you can't have all of **Consistency, Availability, Partition-tolerance** at once; insisting on strong consistency tanks performance, so distributed systems lean on **eventual consistency**.
+- **Coupling vs cohesion:** **loose coupling** = a change to one service doesn't force a change in another (preferred); **high cohesion** = keep related behavior together, unrelated apart; a cohesive service has **one primary reason to change**.
+- **Single-writer rule / bounded contexts:** each business entity has **one owning service + database**; others read via API/events, **never share tables**.
+- **Microservice anti-patterns / pitfalls (likely "which is an anti-pattern" Q):** **distributed monolith** (spread out but tightly tied, e.g. Oracle RAC), **shared database** (bottleneck), **premature decomposition** (too many tiny services), **microservice sprawl**, **technical sprawl** (each team's own tools/langs multiply).
+- **Conway's Law** (Melvin Conway, 1968): system architecture mirrors the org's communication structure. **Inverse Conway's Law:** structure your teams (small, independent) to produce the architecture you want. Teams ↔ architecture.
+- **Evolutionary design via fitness functions:** tests + telemetry that check the architecture is meeting its goals; evolve service boundaries over time.
+- **SRE (Site Reliability Engineering):** the Google-born discipline behind SLI/SLO/SLA/error-budget (a prestigious data-center architect role, not low-level maintenance).
+- **Serverless / FaaS (e.g. AWS Lambda):** short-running, **stateless**, **event-driven**, scales instantly, pay-per-use; you don't manage the server. **Good for:** microservice backends, mobile backends, bots, ML inference, IoT, stream processing, service integration. **Not good for:** databases, deep-learning training, heavy streaming analytics, numerical simulation, video streaming.
+- **Prime Video 2023 case study:** reduced costs ~**90%** by moving a distributed microservice architecture **back to a monolith** — the classic "microservices aren't always right" example.
+- **Idempotency analogy he used:** old-car key (turning it again doesn't change the running state = idempotent) vs modern BMW push-button (each press flips state = not idempotent). **"Exactly-once is an application effect, not a transport guarantee"** (received once ≠ sent once → design for at-least-once + idempotency keys).
 
 ---
 
@@ -221,33 +257,63 @@
 
 ---
 
-## 6. Enterprise Applications: ERP, SCM, CRM (Lecture 6) ⭐⭐
+## 6. Enterprise Applications: ERP, SCM, CRM (Lecture 6) ⭐⭐ (he gave MANY exam Qs here)
 
 ### Enterprise systems foundations
-- **Functional structure:** org divided into departments (sales/marketing, R&D, finance/accounting, HR, IS), each doing closely related activities.
-- **Silo effect:** people perform their step in isolation without understanding what comes before/after → hard to coordinate across functions.
-- **Enterprise Systems (ES):** support **end-to-end** business processes that span the org and multiple geographies.
-- Core business processes: procurement (buy), production (make), fulfillment (sell), lifecycle data mgmt (design), material planning (plan), inventory/warehouse (store), asset mgmt/customer service (service), HCM (people), project mgmt, financial accounting (FI, external), management/controlling accounting (CO, internal).
+- **Functional structure:** org divided into departments (purchasing/buys, warehouse/receives+ships, accounting/money, sales & marketing/finds customers), each owning closely related activities.
+- **Silo effect:** people perform their step in isolation, "tossing it over the wall," without knowing what came before/after → hard to coordinate reliably + handle errors.
+- **Enterprise Systems (ES):** support **end-to-end** processes that cross department **and country** boundaries (e.g., buy a component in Italy, build the bike in Germany, sell in the US).
+- **Groupware** — Douglas Engelbart, 1962, "augmenting human intellect" with computers; evolved into team collaboration tools; originated with **Lotus Notes**.
+- Core business processes: procurement (buy), production (make), fulfillment (sell — "order to cash"), lifecycle data mgmt (design), material planning (plan), inventory/warehouse (store), asset mgmt/customer service (service), HCM (people), project mgmt.
+- **Financial vs Management accounting (he said people confuse these):** **Financial accounting** = tracking the company for **outsiders** (tax authorities, investors, auditors). **Management accounting** (SAP calls it **Controlling / CO**) = tracking for **insiders** (which product line makes money, which cost center overspends).
 
 ### Architectures
-- **Client-server 3-tier:** Presentation (how you interact) / Application (what it does) / Data (where work is stored).
-- **SOA:** extends client-server; integrates apps into composite/mash-up applications. **Four properties of a service:** (1) represents a business activity with a specified outcome, (2) self-contained, (3) a black box to consumers, (4) may consist of other underlying services.
+- **Client-server 3-tier:** Presentation (how you interact) / Application (business logic) / Data (where work is stored). Legacy pattern often shared one database (Oracle App Server) — not ideal.
+- **SOA:** extends client-server; integrates multiple client-server apps via message handling / message bus into composite apps. Microservices are technically a **subset** of SOA.
+- **⭐ Four properties of a service (he said: "that might be a good midterm exam question… select all that apply"):** (1) **logically represents a business activity** with a specified outcome, (2) **self-contained**, (3) a **black box** (internals hidden), (4) **may be composed of other underlying services**.
 
 ### ERP (Enterprise Resource Planning) ⭐
-- Integrates planning, manufacturing, sales/marketing into **one management system**; combines departmental databases into a **single database** accessible to all; **automates** business-process tasks.
-- Focus: **intra-company processes** (within the org); integrates functional & cross-functional processes.
-- **Components/modules:** Finance (general ledger, A/R, A/P), HR (admin, self-service), Manufacturing & Logistics (production planning, materials mgmt, order entry, warehouse mgmt), plus collaboration, content mgmt, BI, identity mgmt.
-- **The Big Three today:** **SAP S/4HANA** (in-memory ERP, RISE with SAP; SAP ECC maintenance ends 2027), **Salesforce** (CRM-grown platform: Data Cloud, Agentforce, AppExchange), **Microsoft Dynamics 365 + Power Platform**. Also Oracle Fusion/NetSuite, Workday.
-- **Clean core:** keep vendor core vanilla; extend via platform layers (SAP BTP, Salesforce Platform, Power Platform) using events/APIs/side-by-side apps. Avoids **customization debt** that makes upgrades take years.
-- **Why replacing ERP is hard:** data gravity, "the processes ARE the org chart," big-bang vs phased cutover (**Hershey, Lidl** failure cases). Prefer **strangler-fig** over rip-and-replace.
+- Consolidates planning, manufacturing, sales, marketing into **one management system**; combines all departmental databases into a **single database = single source of truth** (one customer record, not conflicting copies); **automates** business-process tasks.
+- Focus: **intra-company processes** (operations within the org); integrates functional & cross-functional processes; integration is what enables **forecasting / budgeting / planning across departments** (data must be joinable/related).
+- **⭐ Components/modules (likely "select all that apply"):** **Finance** (general ledger, A/R = money owed to us, A/P = money we owe), **HR** (administration, payroll, self-service), **Manufacturing & Logistics** (production planning, materials management, order entry, warehouse mgmt), plus **SCM, CRM, HRM, collaboration, content mgmt, BI**.
+- **Top ERP vendors (2025):** enterprise = **SAP S/4HANA, Oracle Cloud ERP, Microsoft Dynamics 365, NetSuite**; SMB / open-source = **Odoo**. (Also note **ERPNext** — free open-source ERP on AWS Marketplace, a valid term-project base.)
+- **Vendor core / Clean core:** keep the **vendor core** (vendor's main executable libraries) **vanilla** — never modify it, or every vendor update **clobbers your changes** → tech debt + full re-testing. Customize in the **modules** via a well-defined **API/interface**. Extend via platform layers (SAP BTP, Salesforce Platform, Power Platform) using events/APIs/side-by-side apps.
+- **⭐ Why replacing ERP is hard (4 reasons):** (1) **data gravity** (decades of transactions/master data — must clean, map, prove nothing lost), (2) **the processes ARE the org chart** (changing the system changes people's jobs → projects fail on **people, not code**), (3) **big-bang vs phased cutover**, (4) prefer **strangler-fig** (build at the edges, move traffic piece by piece); rip-and-replace rarely works.
+- **⭐ Case studies to know:** **Hershey** (1999, big-bang ERP+SCM+CRM at once → couldn't ship Halloween candy → lost ~$100M+ in orders); **Lidl** (abandoned SAP in 2018 after 7 years and ~€500M).
+- **Buy vs build (pros/cons — likely a matching question):**
+  - **Pros of buying a package:** built-in **best practices** = packaged institutional knowledge; vendor **support** (seen every problem); **configurable** not coded → less testing/fewer errors; single integrated database; process orientation; standardization.
+  - **Cons:** central control (violates microservice principles); rigidity / loss of flexibility; inherit platform limitations; complexity; shared best-practice patterns = shared attack surface; expensive **consultants**; long implementations.
+  - **Best-of-breed** alternative = spot solutions you integrate yourself (least-common-denominator features).
+- ERP **custom integration** per org is a **~$100B consulting industry**.
+- **Order-to-cash flow (⭐ "put the steps in order"):** pre-sales (contact → inquiry → quotation → contract) → **sales order** (pricing, **availability check, credit check**) → inventory sourcing → delivery/shipping → **billing** → receivable cleared.
+- **SAP document flow / audit trail (why auditors love ERP):** quotation → standard order → delivery → warehouse transfer order (picking) → goods issue (shipment leaves) → invoice → accounting document cleared. Each line **references the one above it** (traceable both directions, time-stamped).
+- **⭐ Three kinds of data (likely select-all / matching):**
+  - **Organizational data** — which part of the company: **client, company code (legal entity), plant, sales area**.
+  - **Master data** — the "who & what": **customer, vendor, material** (stored once, seen by everyone; a wrong/duplicate master record breaks every process that reads it — e.g., pay a vendor twice).
+  - **Situational data** — facts of the moment: **who, when, where** (date, time, person).
+  - → all three combine into one **transactional record** (created when a process runs: order entered, goods issued, invoice posted).
+- **Two transaction rules:** (1) a transaction **snapshots** master data (price list changes tomorrow → yesterday's order keeps yesterday's price); (2) transactions are **never edited in place** — a mistake is corrected only with a **new reversing document** (audit trail stays complete; invoices are **legal documents**).
+- **Atomicity:** an order saves **all-or-nothing** (like a DB transaction). SAP classic order-entry transaction = **VA01**. Customer # and order # come from system-controlled number ranges.
 
 ### CRM (Customer Relationship Management) ⭐
-- Technology to manage the customer base; match customer needs with offerings; track what customers purchased; a **philosophy** for keeping clients happy & returning (not just software).
-- **SFA (Sales Force Automation)** = a primary *component* of CRM.
-- Benefits: consolidate customer data in one system, improve productivity, reach more prospects, close more sales.
+- Manage the customer base (sometimes "eCRM"); match customer needs with offerings; track what customers bought; a **philosophy** for keeping clients happy & returning — **not just software**. Tightly coupled with **marketing** (budgets, campaigns, brand).
+- **⭐ SFA (Sales Force Automation) is a primary COMPONENT of CRM.** SFA = a seller's day (targets, calls, contacts, appointments, deal pipeline). CRM = broader (full customer profile, all communications, e-commerce history, campaigns, service interactions) — **fundamentally different products**.
+- **⭐ CRM succeeds when 4 things align:** **strategy, process, people, technology** (common failure = starting with the technology first).
+- **⭐ Core CRM activities (select all):** one-to-one marketing, call-center automation, **sales-force automation**, campaign management, contact management, sales-activity management.
+- **⭐ 4 phases of the customer relationship (order):** **prospecting → acquiring → servicing → retaining.**
+- **Marketing automation** = event-triggered (sign-up, purchase, going quiet) → send message → **measure the result** (a campaign never measured can't be improved). **Double opt-in** = confirm via emailed link before adding to list.
+- **SAP CRM ecosystem:** CRM (customer-facing) + ERP (executes orders/deliveries/invoices) + **Business Warehouse** (reporting) + **APO** (Advanced Planner & Optimizer); master data (customers, products) synced ERP↔CRM.
+- **CRM vendors:** **Salesforce** (leader/poster child), Microsoft, Pegasystems, ServiceNow, Zendesk, Oracle. (Exam trap: NVIDIA / Ford are NOT CRM vendors.)
+- **Benefits of CRM:** recognize prospects, learn customer preferences, anticipate needs, track/organize/consolidate clients → improve productivity, reach more prospects, close more sales, raise satisfaction & retention, reduce expenses.
 
 ### SCM (Supply Chain Management)
-- Manages flow upstream (suppliers) → downstream (customers). **CRM drives what SCM will produce.**
+- Extends planning **outside** the company (upstream suppliers → downstream customers). **CRM drives what SCM will produce** (customer orders decide what gets made and bought).
+
+### Cloud vs on-prem (ERP/CRM deployment)
+- **CRM** mostly cloud (Salesforce); **ERP** often **hybrid** (some apps never leave the local data center). Most enterprises are hybrid; the interesting modern form is **multi-cloud** (AWS + Google + Azure + private DC). Cloud = convenience but real **risk** (outages/data loss possible even at "11 nines").
+
+### ERP implementation steps (good for your project + possible ordering Q)
+Define objectives/goals (exit criteria) → choose platform → form team (project manager/leader) → detailed plan (timelines, milestones, resources, contingencies) → data review (clean, deduplicate) → data mapping → tools → configuration & customization → user training → change management → **pilot test** (limited scope, collect feedback) → full deployment (with **rollback** plan) → monitor & optimize → continuous improvement.
 
 ---
 
